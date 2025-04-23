@@ -6,32 +6,36 @@ st.title("Обновлённая адресная программа СДЭК с
 
 st.markdown("""
 Загрузите два Excel-файла:
-- **Старый файл** — содержит вручную заполненный столбец `Округ`
+- **Старый файл** — содержит вручную заполненный столбец `Округ` на листе `СДЭК`
 - **Новый файл** — свежая адресная программа от СДЭК
-
-Приложение:
-1. Покажет **обновлённую таблицу** из нового файла с добавленным `Округом`
-2. Покажет **таблицу изменений** (удаления, добавления, изменения по адресу или проходимости)
 """)
 
 old_file = st.file_uploader("Старый файл (например, 07.04)", type="xlsx")
 new_file = st.file_uploader("Новый файл (например, 09.04)", type="xlsx")
 
+if old_file:
+    xls = pd.ExcelFile(old_file)
+    cdek_sheets = [name for name in xls.sheet_names if name.strip().lower().startswith("сдэк")]
+
+    if not cdek_sheets:
+        st.error("В старом файле не найдено ни одного листа, начинающегося с 'СДЭК'.")
+        st.stop()
+    elif len(cdek_sheets) == 1:
+        selected_sheet = cdek_sheets[0]
+        st.info(f"Автоматически выбран лист: {selected_sheet}")
+    else:
+        selected_sheet = st.selectbox("Выберите лист из старого файла:", cdek_sheets)
+
 if old_file and new_file:
     try:
-        # Пропускаем первые 32 строки (мета-информация)
-        df_old = pd.read_excel(old_file, skiprows=32)
+        df_old = pd.read_excel(xls, sheet_name=selected_sheet, skiprows=32)
         df_new = pd.read_excel(new_file, skiprows=32)
 
-        # Проверим наличие нужных колонок
         required_cols = {'GID', 'Адрес', 'Средняя проходимость месяц'}
         if not required_cols.issubset(df_old.columns) or not required_cols.issubset(df_new.columns):
             st.error("Оба файла должны содержать колонки: GID, Адрес, Средняя проходимость месяц")
         else:
-            # Сопоставим GID -> Округ из старого файла
             gid_to_district = df_old.set_index('GID')['Округ'].to_dict()
-
-            # Вставим 'Округ' в то же место, где он был в старом файле
             insert_index = df_new.columns.get_loc('GID') + 1
             df_new.insert(insert_index, 'Округ', df_new['GID'].map(gid_to_district))
 
@@ -47,7 +51,7 @@ if old_file and new_file:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            # === Таблица изменений ===
+            # Сравнение изменений
             df_old_renamed = df_old[['GID', 'Адрес', 'Средняя проходимость месяц']].copy()
             df_new_renamed = df_new[['GID', 'Адрес', 'Средняя проходимость месяц']].copy()
 
